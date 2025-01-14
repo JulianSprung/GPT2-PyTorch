@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "gpt2-pytorch"
+version = "0.0.1"
+description = "My implementation of GPT-2 in PyTorch for learning and fun"
+authors = ["Julian Sprung <jsprung@hueray.app>"]
+license = "MIT"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+torch = "^2.3.1"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+jupyter = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
