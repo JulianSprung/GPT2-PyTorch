@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Hyperparameters
-BATCH_SIZE = 32
-CONTEXT_SIZE = 8
+BATCH_SIZE = 16
+CONTEXT_SIZE = 32
 LEARNING_RATE = 1e-3
 N_HEADS = 4
 HEAD_SIZE = 16
@@ -47,7 +47,8 @@ val_tokens = tokens[train_split:]
 
 def get_batch(split: str):
     data = train_tokens if split == "train" else val_tokens
-    ix = torch.randint(len(data) - BATCH_SIZE, (BATCH_SIZE,))
+    # Ensure we have enough context for each index
+    ix = torch.randint(0, len(data) - CONTEXT_SIZE, (BATCH_SIZE,))
     x = torch.stack([data[i : i + CONTEXT_SIZE] for i in ix]).to(DEVICE)
     y = torch.stack([data[i + 1 : i + CONTEXT_SIZE + 1] for i in ix]).to(DEVICE)
     return x, y
@@ -56,23 +57,29 @@ def get_batch(split: str):
 class AttentionHead(nn.Module):
     def __init__(self, head_size: int):
         super().__init__()
-
         self.key = nn.Linear(N_EMBED, head_size, bias=False)
         self.query = nn.Linear(N_EMBED, head_size, bias=False)
         self.value = nn.Linear(N_EMBED, head_size, bias=False)
+        # Create a larger tril matrix to handle different sequence lengths
         self.register_buffer("tril", torch.tril(torch.ones(CONTEXT_SIZE, CONTEXT_SIZE)))
         self.dropout = nn.Dropout(DROPOUT)
 
     def forward(self, x):
         B, T, C = x.shape
-        k = self.key(x)
-        q = self.query(x)
-        v = self.value(x)
-        wei = q @ k.transpose(-2, -1) * C**-0.5
+        k = self.key(x)  # (B, T, head_size)
+        q = self.query(x)  # (B, T, head_size)
+        v = self.value(x)  # (B, T, head_size)
+
+        # compute attention scores
+        wei = q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5  # (B, T, T)
+        # Ensure we only use the appropriate part of the tril matrix
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
         wei = F.softmax(wei, dim=-1)
         wei = self.dropout(wei)
-        return wei @ v
+
+        # perform the weighted aggregation of the values
+        out = wei @ v  # (B, T, head_size)
+        return out
 
 
 class MultiHeadAttention(nn.Module):
@@ -144,13 +151,18 @@ class Transformer(nn.Module):
         return logits, loss
 
     def generate(self, tokens, max_new_tokens):
-
+        # Generate one token at a time
         for _ in range(max_new_tokens):
-            logits, loss = self(tokens)
-            logits = logits[:, -1, :]
+            # Crop the context to the last CONTEXT_SIZE tokens if it's too long
+            context = (
+                tokens[:, -CONTEXT_SIZE:] if tokens.size(1) > CONTEXT_SIZE else tokens
+            )
+            logits, loss = self(context)
+            # Focus only on the last time step
+            logits = logits[:, -1, :]  # becomes (B, C)
             probs = F.softmax(logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)
-            tokens = torch.cat((tokens, next_token), dim=1)
+            next_token = torch.multinomial(probs, num_samples=1)  # (B, 1)
+            tokens = torch.cat((tokens, next_token), dim=1)  # (B, T+1)
         return tokens
 
 
@@ -158,6 +170,16 @@ m = Transformer(vocab_size, N_EMBED)
 m = m.to(DEVICE)
 optimizer = torch.optim.AdamW(m.parameters(), lr=LEARNING_RATE)
 
+print("# Generating text (before training)...")
+print(
+    decode(
+        m.generate(
+            tokens=torch.zeros([1, 1], dtype=torch.long, device=DEVICE),
+            max_new_tokens=300,
+        )[0].tolist()
+    )
+)
+print("# Training...")
 for steps in range(10000):
     x, y = get_batch("train")
     y_hat, loss = m(x, y)
@@ -165,16 +187,16 @@ for steps in range(10000):
     loss.backward()
     optimizer.step()
     if steps % 1000 == 0:
-        print(f"loss at step {steps} is {loss.item()}")
+        print(f"  loss at step {steps} is {loss.item()}")
 
-print("Final loss:", loss.item())
+print("  final loss:", loss.item())
 
-# validation loss
+print("# Validation...")
 x_val, y_val = get_batch("val")
 y_hat_val, loss_val = m(x_val, y_val)
-print(f"validation loss: {loss_val.item()}")
+print(f"  validation loss: {loss_val.item()}")
 
-print("Generating text...")
+print("# Generating text (after training)...")
 print(
     decode(
         m.generate(
@@ -184,4 +206,4 @@ print(
     )
 )
 
-print("End of file")
+print("#End of file")
