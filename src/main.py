@@ -3,10 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Hyperparameters
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 CONTEXT_SIZE = 32
 LEARNING_RATE = 1e-3
-N_HEADS = 4
+N_HEADS = 8
 HEAD_SIZE = 16
 N_EMBED = 32
 DROPOUT = 0.0
@@ -114,10 +114,12 @@ class TransformerBlock(nn.Module):
         super().__init__()
         self.mha = MultiHeadAttention(N_HEADS, HEAD_SIZE)
         self.ffwd = FeedForward(n_embed)
+        self.ln1 = nn.LayerNorm(n_embed)
+        self.ln2 = nn.LayerNorm(n_embed)
 
     def forward(self, x):
-        x = x + self.mha(x)
-        x = x + self.ffwd(x)
+        x = x + self.mha(self.ln1(x))
+        x = x + self.ffwd(self.ln2(x))
         return x
 
 
@@ -168,6 +170,10 @@ class Transformer(nn.Module):
 
 m = Transformer(vocab_size, N_EMBED)
 m = m.to(DEVICE)
+
+print("Parameters:", m.parameters())
+print("Parameters:", sum(p.numel() for p in m.parameters()))
+
 optimizer = torch.optim.AdamW(m.parameters(), lr=LEARNING_RATE)
 
 print("# Generating text (before training)...")
@@ -187,14 +193,15 @@ for steps in range(10000):
     loss.backward()
     optimizer.step()
     if steps % 1000 == 0:
-        print(f"  loss at step {steps} is {loss.item()}")
-
-print("  final loss:", loss.item())
-
-print("# Validation...")
+        x_val, y_val = get_batch("val")
+        y_hat_val, loss_val = m(x_val, y_val)
+        print(
+            f"  loss at step {steps} is {loss.item()}. Validation loss: {loss_val.item()}"
+        )
 x_val, y_val = get_batch("val")
 y_hat_val, loss_val = m(x_val, y_val)
-print(f"  validation loss: {loss_val.item()}")
+print("  final loss:", loss.item(), "validation loss:", loss_val.item())
+
 
 print("# Generating text (after training)...")
 print(
