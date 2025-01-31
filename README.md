@@ -1,5 +1,5 @@
 # GPT2-PyTorch
-Pytorch implementation of GPT-2 
+Pytorch implementation of a transformer and evolving into GPT-2 
 
 ## Getting started
 Install all dependencies.
@@ -19,4 +19,9 @@ wget -O data/input.txt https://raw.githubusercontent.com/karpathy/char-rnn/maste
 or
 ```bash
 curl -o data/input.txt https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
+```
+
+## Training
+```bash
+python -m src.transformer.train
 ```
