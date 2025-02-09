@@ -9,7 +9,6 @@ class AttentionHead(nn.Module):
         self.key = nn.Linear(n_embed, head_size, bias=False)
         self.query = nn.Linear(n_embed, head_size, bias=False)
         self.value = nn.Linear(n_embed, head_size, bias=False)
-        # Create a larger tril matrix to handle different sequence lengths
         self.register_buffer("tril", torch.tril(torch.ones(context_size, context_size)))
         self.dropout = nn.Dropout(dropout)
 
